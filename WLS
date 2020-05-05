@@ -1,0 +1,390 @@
+create table eb.wk_sku_loc_mstr_staging diststyle even as (
+SELECT b.fiscal_year                                                AS
+                                                                             fiscal_year,
+       b.fiscal_month                                               AS
+                                                                             fiscal_month,
+       b.fiscal_week                                                AS
+                                                                             fiscal_week,
+       Cast(Cast(b.fiscal_year AS VARCHAR(4))
+         + RIGHT('000' + Cast(b.fiscal_month AS VARCHAR(2)), 2)
+         + Cast(b.fiscal_week AS VARCHAR(1)) AS INT)                AS
+                                                                             FiscalYMW,
+       b.location_id AS
+[L#],
+       (CASE
+         WHEN b.location_id IN (590, 591) THEN 12
+         ELSE b.business_id
+         END)                                                              AS
+                                                                             business_id,
+       Cast(b.dept_id AS VARCHAR(2)) + '-'
+         + Cast(b.style_id AS VARCHAR(4))                                 AS
+                                                                             "Old_Dept-Style",
+       Cast(b.dept_id AS VARCHAR(2)) + '-'
+         + Cast(b.style_id AS VARCHAR(4)) + '-'
+         + Cast(b.color_id AS VARCHAR(4))                                 AS
+                                                                             "Old_Dept-Style-Color",
+       Cast(rms.class AS VARCHAR(3)) + '-'
+         + Cast(b.style_id AS VARCHAR(4))                                 AS
+                                                                             "New_Dept-Style",
+       Cast(rms.class AS VARCHAR(3)) + '-'
+         + Cast(b.style_id AS VARCHAR(4)) + '-'
+         + Cast(b.color_id AS VARCHAR(4))                                 AS
+                                                                             "New_Dept-Style-Color",
+       b.dept_id                                                          AS
+                                                                             Old_dept_id,
+       b.style_id,
+       b.color_id,
+       b.size_id,
+       lkup.dept_name                                                     AS
+                                                                             Old_dept_name,
+       lkup.style_name                                                    AS
+                                                                             Style_Name,
+       lkup.color_abbr                                                    AS
+                                                                             Color_Name,
+       lkup.size_abbr                                                     AS
+                                                                             Size_name,
+       rms.style_desc,
+       color.color_desc,
+       rms.group_number                                                   AS
+                                                                             Group_id,
+       rms.group_name                                                     AS
+                                                                             Group_name,
+       rms.division                                                       AS
+                                                                             Division_id,
+       rms.division_name                                                  AS
+                                                                             Division_name,
+       rms.new_dept_id                                                    AS
+                                                                             Category_id,
+       rms.dept_name                                                      AS
+                                                                             Category_name,
+       rms.class                                                          AS
+                                                                             New_Dept_id,
+       rms.class_name                                                     AS
+                                                                             New_Dept_name,
+       rms.subclass                                                       AS
+                                                                             New_Class_id,
+       rms.subclass_name                                                  AS
+                                                                             New_Class_name,
+       rms.series                                                         AS
+                                                                             Series,
+       COALESCE(inv.inventoryowned, 0)                                    AS
+                                                                             EOH_Booked,
+       COALESCE(inv.inventoryavailable, 0)                                AS
+                                                                             EOH_InStore,
+       COALESCE(sales.retl_sales_net * isnull(ex.exchange_rate, 1), 0)   AS
+                                                                             Net_Sales,
+       COALESCE(sales.units_net, 0)                                       AS
+                                                                             Net_Units,
+       COALESCE(sales.units_sold, 0)                                      AS
+                                                                             Gross_Units,
+       COALESCE(sales.cost_net * isnull(ex.exchange_rate, 1), 0)         AS
+                                                                             Net_Cost,
+       COALESCE(sales.cost_sold * isnull(ex.exchange_rate, 1), 0)        AS
+                                                                             Gross_Cost,
+       COALESCE(sales.retl_net_dsc_emp * isnull(ex.exchange_rate, 1), 0) AS
+                                                                             Net_EmpDiscount,
+       COALESCE(sales.retl_sold_std * isnull(ex.exchange_rate, 1), 0)    AS
+                                                                             Gross_Ticket,
+       COALESCE(sales.retl_net_std * isnull(ex.exchange_rate, 1), 0)     AS
+                                                                             Net_Ticket,
+        (CASE
+         WHEN store.location_type_id IN (777, 999) THEN 'DC'
+         ELSE 'Store'
+         END)                                                              AS
+                                                                             DC_or_Store,
+       COALESCE(sales.net_mkdn_clear_qy, 0)                               AS
+                                                                             Net_Clearance_Units,
+       cast(cal.old_actual_date as timestamp)                                                as date,
+       cal.comp_fiscal_year,
+       cal.comp_fiscal_month,
+       cal.comp_fiscal_week,
+       COALESCE(ex.exchange_rate, 1)                                      AS
+                                                                             exchange_rate,
+       COALESCE(bus.eoh_unit_cost * isnull(ex.exchange_rate, 1) * inv.inventoryowned, 0)                AS
+                                                                             eoh_booked_cost,
+       COALESCE(bus.eoh_unit_retail * isnull(ex.exchange_rate, 1) * inv.inventoryowned, 0)              AS
+                                                                             eoh_booked_retail,
+       COALESCE(bus.eoh_unit_cost * isnull(ex.exchange_rate, 1) * inv.inventoryavailable, 0)            AS
+                                                                             eoh_instore_cost,
+       COALESCE(bus.eoh_unit_retail * isnull(ex.exchange_rate, 1) * inv.inventoryavailable, 0)          AS
+                                                                             eoh_instore_retail,
+       COALESCE(bus.eoh_unit_cost * isnull(ex.exchange_rate, 1) * (COALESCE(inv.inventoryowned, 0)
+         + COALESCE(sales.units_net, 0)), 0)                              AS
+                                                                             eoh_booked_cost_gmroii,
+       COALESCE(bus.eoh_unit_cost * isnull(ex.exchange_rate, 1) * (COALESCE(inv.inventoryavailable, 0)
+         + COALESCE(sales.units_net, 0)), 0)                              AS
+                                                                             eoh_instore_cost_gmroii,
+       m.[r#],
+  m.climate,
+  (CASE
+  WHEN b.business_id IN ( 1, 3, 11 ) THEN 'US'
+  ELSE 'CA'
+END) AS
+Country,
+m.district,
+m.region,
+m."fp-outlet",
+m."comp status",
+m."store name",
+m.longitude,
+m.latitude,
+m.state,
+  (CASE
+WHEN sales.net_mkdn_clear_qy != 0 THEN 'C'
+WHEN sales.retl_net_std = sales.retl_sales_net THEN 'R'
+WHEN sales.units_net = 0 THEN 'None'
+ELSE 'P'
+END) AS
+SalesPriceType,
+t.assort AS
+assortment_group,
+t.drn AS
+drn,
+t.dev AS
+dev,
+t.can_dol AS
+price_ca,
+t.us_dol AS
+price_us,
+t.season AS
+assortment_season,
+t.cons,
+t.clear,
+t.direct_intro,
+t.store_intro,
+w.RPC_Flag_sales as rpc_flag_sales,
+w.RPC_flag_units as rpc_flag_units,
+         (CASE
+WHEN m."assort" = 'Direct' THEN 'D-Core'
+WHEN m."assort" = 'Direct Only' THEN 'D-Add'
+WHEN m."assort" = 'Base Camp' THEN 'Base'
+WHEN m."assort" = 'Camp 1' THEN 'Camp'
+ELSE m."assort"
+END) AS
+store_group,
+
+          (case
+when m."fp footwear" = 'T1' then 'tier 1'
+when m."fp footwear" = 'T2' then 'tier 2'
+when m."fp footwear" = 'T3' then 'tier 3'
+when m."fp footwear" = 'T4' then 'tier 4'
+end) as footwear_store_group,
+
+m."net sq ft" AS
+store_net_sqft,
+           (CASE
+WHEN t.size_type IS NULL THEN 'REG'
+ELSE t.size_type
+END) AS
+size_type,
+            (CASE
+WHEN po_flag IS NULL THEN 'No'
+ELSE 'Yes'
+END) AS
+assorted_flag,
+             (CASE
+WHEN po_flag IS NULL THEN 0
+ELSE
+  (CASE
+WHEN inventoryavailable > 0 THEN 0
+ELSE 1
+END)
+END) AS
+stockout,
+   (CASE
+WHEN po_flag IS NULL THEN 0
+ELSE 1
+END) AS
+assorted_sku_loc_count,
+t.floorset AS
+floorset
+FROM (SELECT s.fiscal_year,
+s.fiscal_month,
+s.fiscal_week,
+s.location_id,
+s.dept_id,
+s.style_id,
+s.color_id,
+s.size_id,
+s.business_id
+FROM eb.wk_sku_loc_sales s
+  -- delete later
+-- where s.fiscal_year = 2019 and s.fiscal_month = 5 and s.fiscal_week = 1
+
+UNION
+SELECT inv.shifted_fy,
+inv.shifted_fm,
+inv.shifted_fw,
+inv.location_id,
+inv.dept_id,
+inv.style_id,
+inv.color_id,
+inv.size_id,
+inv.business_id
+FROM eb.wk_sku_loc_inv inv
+WHERE inv.inventoryowned != 0
+  -- delete later
+--   and inv.shifted_fy = 2019 and inv.shifted_fm = 5 and inv.shifted_fw = 1
+UNION
+SELECT a.fiscal_year,
+a.fiscal_month,
+a.fiscal_week_month,
+m.[l#],
+a.dept_id,
+a.style_id,
+a.color_id,
+a.size_id,
+m.business
+FROM eb.assortment a
+INNER JOIN eb.msp_asst m
+ON m.assort = a.store_group
+AND m.climate = a.climate
+AND m.season = a.season
+AND m."fp-outlet" = a.channel
+WHERE a.po_flag = 'Y'
+  -- delete later
+--   and a.fiscal_year = 2019 and a.fiscal_month = 5 and a.fiscal_week_month = 1
+
+) b -- 5/27/19: note that b uses old calendar
+
+LEFT JOIN (SELECT fiscal_year,
+fiscal_month,
+fiscal_week,
+location_id,
+dept_id,
+style_id,
+color_id,
+size_id,
+business_id,
+Sum(retl_sales_net) AS retl_sales_net,
+Sum(units_net) AS units_net,
+Sum(units_sold) AS units_sold,
+Sum(cost_net) AS cost_net,
+Sum(cost_sold) AS cost_sold,
+Sum(retl_net_dsc_emp) AS retl_net_dsc_emp,
+Sum(retl_sold_std) AS retl_sold_std,
+Sum(retl_net_std) AS retl_net_std,
+Sum(net_mkdn_clear_qy) AS net_mkdn_clear_qy
+FROM eb.wk_sku_loc_sales sales
+
+  -- delete later
+-- where fiscal_year = 2019 and fiscal_month = 5 and fiscal_week = 1
+
+GROUP BY fiscal_year,
+fiscal_month,
+fiscal_week,
+location_id,
+dept_id,
+style_id,
+color_id,
+size_id,
+business_id) sales
+ON b.fiscal_year = sales.fiscal_year
+AND b.fiscal_month = sales.fiscal_month
+AND b.fiscal_week = sales.fiscal_week
+AND b.location_id = sales.location_id
+AND b.dept_id = sales.dept_id
+AND b.style_id = sales.style_id
+AND b.color_id = sales.color_id
+AND b.size_id = sales.size_id
+AND b.business_id = sales.business_id
+LEFT JOIN eb.wk_sku_loc_inv inv
+ON b.fiscal_year = inv.shifted_fy
+AND b.fiscal_month = inv.shifted_fm
+AND b.fiscal_week = inv.shifted_fw
+AND b.location_id = inv.location_id
+AND b.dept_id = inv.dept_id
+AND b.style_id = inv.style_id
+AND b.color_id = inv.color_id
+AND b.size_id = inv.size_id
+AND b.business_id = inv.business_id
+LEFT JOIN (SELECT a.*,
+m.[l#],
+m.assort
+FROM eb.assortment a
+JOIN eb.msp_asst m
+ON m.assort = a.store_group
+AND m.climate = a.climate
+AND m."fp-outlet" = a.channel
+AND m.season = a.season
+WHERE a.po_flag = 'Y') t
+ON b.fiscal_year = t.fiscal_year
+AND b.fiscal_month = t.fiscal_month
+AND b.fiscal_week = t.fiscal_week_month
+AND b.dept_id = t.dept_id
+AND b.style_id = t.style_id
+AND b.color_id = t.color_id
+AND b.size_id = t.size_id
+AND b.location_id = t.[l#]
+LEFT JOIN eb.msp m
+ON b.location_id = m.[l#]
+LEFT JOIN eb.location_mstr store
+ON b.location_id = store.location_id
+LEFT JOIN eb.rpc_rollup_wk_color_loc w
+ON b.fiscal_year = w.fiscal_year
+AND b.fiscal_month = w.fiscal_month
+AND b.fiscal_week = w.fiscal_week
+AND b.dept_id = w.dept_id
+AND b.style_id = w.style_id
+AND b.color_id = w.color_id
+AND b.business_id = w.business_id
+AND b.location_id = w.location_id
+LEFT JOIN eb.sku_lkup lkup
+ON b.dept_id = lkup.dept_id
+AND b.style_id = lkup.style_id
+AND b.color_id = lkup.color_id
+AND b.size_id = lkup.size_id
+
+-- 5/27/19: exchange_rate uses new calendar and needs to be shifted to adapt to old calendar (for now)
+LEFT JOIN eb.exchange_rate_hist ex -- 5/29/19: now shifted to the old calendar
+ON b.fiscal_year = ex.fiscal_year
+AND b.fiscal_month = ex.fiscal_month
+AND b.fiscal_week = ex.fiscal_week
+AND ex.nation_id = 'CA'
+AND b.business_id IN ( 2, 4 )
+LEFT JOIN eb.rms_styles rms
+ON b.dept_id = rms.dept_id
+AND b.style_id = rms.style_id_alpha
+INNER JOIN eb.comp_fiscal_date_weekly cal
+ON b.fiscal_year = cal.old_fiscal_year
+AND b.fiscal_month = cal.old_fiscal_month
+AND b.fiscal_week = cal.old_fiscal_week
+AND cal.old_actual_date < CURRENT_DATE
+INNER JOIN eb.color_lkup color
+ON color.color_id = b.color_id
+INNER JOIN eb.size_lkup size
+ON size.size_id = b.size_id
+LEFT JOIN (SELECT fiscal_year,
+fiscal_month,
+business_id,
+size_id,
+color_id,
+dept_id,
+style_id,
+Avg(cost_owned_bow / units_owned_bow) AS eoh_unit_cost
+,
+Avg(retl_owned_bow /
+units_owned_bow) AS eoh_unit_retail
+FROM eb.wk_sku_bus_inv
+WHERE units_owned_bow != 0
+AND units_owned_bow > -500000
+AND units_owned_bow < 500000
+and fiscal_year >= 2016
+GROUP BY fiscal_year,
+fiscal_month,
+business_id,
+size_id,
+color_id,
+dept_id,
+style_id
+HAVING Avg(cost_owned_bow / units_owned_bow) < 500
+AND Avg(retl_owned_bow / units_owned_bow) <= 1000
+AND Avg(retl_owned_bow / units_owned_bow) >= 0
+AND Avg(cost_owned_bow / units_owned_bow) >= 0) bus
+ON b.fiscal_year = bus.fiscal_year
+AND b.fiscal_month = bus.fiscal_month
+AND b.business_id = bus.business_id
+AND b.size_id = bus.size_id
+AND b.color_id = bus.color_id
+AND b.dept_id = bus.dept_id
+AND b.style_id = bus.style_id);
