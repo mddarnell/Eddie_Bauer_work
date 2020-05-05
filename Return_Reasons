@@ -1,0 +1,131 @@
+select temp.*, fiscal.* from -- NOTE 2/4/20: added fiscal calendar for reporting using fical_date table
+(SELECT  [business_id]
+      ,a.[dept_id]
+      ,a.[style_id]
+      ,[sell_price]
+      ,[reporting_period]
+      ,Left([reporting_period],4) as 'Year'
+      ,Right([reporting_period],1) as 'Week'
+      ,Left(Right([reporting_period],3),2)*1 as 'Month'
+      ,[retail_sale_dlr]
+      ,[retail_sale_unt]
+      ,[retail_sale_cst]
+      ,[direct_sale_dlr]
+      ,[direct_sale_unt]
+      ,[direct_sale_cst]
+      ,[r2r_return_dlr]
+      ,[r2r_return_unt]
+      ,[r2r_return_cst]
+      ,[d2r_return_dlr]
+      ,[d2r_return_unt]
+      ,[d2r_return_cst]
+      ,[d2d_return_dlr]
+      ,case when business_id != 11 then [d2d_return_unt] else 0 end as d2d_return_unt
+      ,[d2d_return_cst]
+      ,style.Style_Name
+      ,'99-NO REASON' as ReasonDescription
+      ,'OTHER' as ReasonGroup
+      ,dept.DEPT_NAME
+            , st.division_name                                    AS
+                New_Division_name,
+                st.new_dept_id                                      AS
+                New_Category_id,
+                st.dept_name                                        AS
+                New_Category_name,
+                st.class                                            AS
+                New_Dept_id,
+                st.class_name                                       AS
+                New_Dept_name,
+                st.subclass                                         AS
+                New_Class_id,
+                st.subclass_name                                    AS
+                New_Class_name,
+                st.series                                           AS Series
+  FROM [WMSQLPRD12].[returns_reporting].[dbo].[sales_returns_style] a
+   LEFT  JOIN [WMSQLPRD12].[AllocPlanning].dbo.epitemmvs_style_lkup style
+         ON a.dept_id = style.dept_id
+            AND a.style_id = style.style_id
+	LEFT  JOIN [WMSQLPRD12].[AllocPlanning].dbo.DEPT_LKUP dept
+	on a.dept_id = dept.DEPT_ID
+		          LEFT JOIN [WMSQLPRD12].[AllocPlanning].dbo.rms_styles st
+              ON a.dept_id = st.dept_id
+                 AND a.[style_id] = st.style_id_alpha
+
+UNION ALL
+
+SELECT [business_id]
+      ,a.[dept_id]
+      ,a.[style_id]
+      ,0
+      ,[reporting_period]
+      ,Left([reporting_period],4) as 'Year'
+      ,Right([reporting_period],1) as 'Week'
+      ,Left(Right([reporting_period],3),2)*1 as 'Month'
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,0
+      ,[return_reason_units]
+      ,0
+      ,style.Style_Name
+      ,return_reason_desc
+      ,return_group_desc
+      ,dept.DEPT_NAME
+      , st.division_name                                    AS
+                New_Division_name,
+                st.new_dept_id                                      AS
+                New_Category_id,
+                st.dept_name                                        AS
+                New_Category_name,
+                st.class                                            AS
+                New_Dept_id,
+                st.class_name                                       AS
+                New_Dept_name,
+                st.subclass                                         AS
+                New_Class_id,
+                st.subclass_name                                    AS
+                New_Class_name,
+                st.series                                           AS Series
+
+  FROM [WMSQLPRD12].[returns_reporting].[dbo].[return_reason_sku] a
+   LEFT  JOIN [WMSQLPRD12].[AllocPlanning].dbo.epitemmvs_style_lkup style
+         ON a.dept_id = style.dept_id
+         and a.style_id = style.style_id
+   LEFT JOIN [WMSQLPRD12].[returns_reporting].[dbo].[admin_return_group_xref] reason
+		ON reason.return_reason = a.return_reason_code
+   LEFT JOIN [WMSQLPRD12].[returns_reporting].[dbo].[admin_return_reason_group] reasong
+		ON reasong.return_group = reason.return_group
+	LEFT  JOIN [WMSQLPRD12].[AllocPlanning].dbo.DEPT_LKUP dept
+	on a.dept_id = dept.DEPT_ID
+	          LEFT JOIN [WMSQLPRD12].[AllocPlanning].dbo.rms_styles st
+              ON a.dept_id = st.dept_id
+                 AND a.[style_id] = st.style_id_alpha) temp
+				 LEFT JOIN (SELECT min(ACTUAL_DATE) week_start_date,
+ max(ACTUAL_DATE ) week_end_date,
+
+      [FISCAL_YEAR]
+	      ,[FISCAL_QUARTER]
+      ,[FISCAL_MONTH]
+      ,[FISCAL_WEEK]
+, DATEDIFF(WEEK, DATEADD(MONTH, DATEDIFF(MONTH, 0, ACTUAL_DATE), 0), ACTUAL_DATE) +1 cal_week_of_month
+, DATEPART(month, ACTUAL_DATE) cal_month_of_year
+,DATEPART(year,ACTUAL_DATE) cal_year
+
+  FROM [WMSQLPRD15].[epitemmvs].[dbo].[FISCAL_DATE]
+  group by       [FISCAL_YEAR]
+	      ,[FISCAL_QUARTER]
+      ,[FISCAL_MONTH]
+      ,[FISCAL_WEEK]
+, DATEDIFF(WEEK, DATEADD(MONTH, DATEDIFF(MONTH, 0, ACTUAL_DATE), 0), ACTUAL_DATE) +1
+, DATEPART(month, ACTUAL_DATE)
+,DATEPART(year,ACTUAL_DATE)) fiscal
+  on temp.Year = fiscal.cal_year and temp.Month=fiscal.cal_month_of_year and temp.Week = fiscal.cal_week_of_month
