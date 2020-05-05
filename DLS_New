@@ -1,0 +1,237 @@
+select
+
+  --union fields
+  a.fiscal_year,
+  a.fiscal_month,
+  a.fiscal_week,
+  a.fiscal_day,
+  w.comp_fiscal_year,
+  w.comp_fiscal_month,
+  w.comp_fiscal_week,
+  a.tran_date,
+  a.location_id,
+  a.business_id,
+  a.dept_id                                                                                                   as old_dept_id,
+  a.style_id,
+  a.color_id,
+  a.size_id,
+  a.RPC_flag,
+
+  --date fields
+  Cast(Cast(a.fiscal_year AS VARCHAR(4)) + RIGHT('000' + Cast(a.fiscal_month AS VARCHAR(2)), 2) +
+       Cast(a.fiscal_week AS VARCHAR(1)) AS INT)                                                              AS FiscalYMW,
+
+  --location fields
+  m."r#",
+  m.climate,
+  CASE WHEN a.business_id IN (1, 3, 11) THEN 'US' ELSE 'CA' END                                               AS Country,
+  m.district,
+  m.region,
+  m."fp-outlet",
+  m."comp status",
+  m."store name",
+  m.longitude,
+  m.latitude,
+  m.state,
+  CASE
+    WHEN m."assort" = 'Direct' THEN 'D-Core'
+    WHEN m."assort" = 'Direct Only' THEN 'D-Add'
+    WHEN m."assort" = 'Base Camp' THEN 'Base'
+    WHEN m."assort" = 'Camp 1' THEN 'Camp'
+    ELSE m."assort"
+    END                                                                                                       AS store_group,
+  case
+    when m."fp footwear" = 'T1' then 'tier 1'
+    when m."fp footwear" = 'T2' then 'tier 2'
+    when m."fp footwear" = 'T3' then 'tier 3'
+    when m."fp footwear" = 'T4' then 'tier 4'
+    end                                                                                                       as footwear_store_group,
+  m."net sq ft"                                                                                               AS store_net_sqft,
+  CASE WHEN store.location_type_id IN (777, 999) THEN 'DC' ELSE 'Store' END                                   AS DC_or_Store,
+
+  --inv_attributes
+  Cast(a.dept_id AS VARCHAR(2)) + '-' +
+  Cast(a.style_id AS VARCHAR(4))                                                                              AS "Old_Dept-Style",
+  Cast(a.dept_id AS VARCHAR(2)) + '-' + Cast(a.style_id AS VARCHAR(4)) + '-' +
+  Cast(a.color_id AS VARCHAR(4))                                                                              AS "Old_Dept-Style-Color",
+  Cast(rms.class AS VARCHAR(3)) + '-' +
+  Cast(a.style_id AS VARCHAR(4))                                                                              AS "New_Dept-Style",
+  Cast(rms.class AS VARCHAR(3)) + '-' + Cast(a.style_id AS VARCHAR(4)) + '-' +
+  Cast(a.color_id AS VARCHAR(4))                                                                              AS "New_Dept-Style-Color",
+  lkup.dept_name                                                                                              AS Old_dept_name,
+  lkup.style_name                                                                                             AS Style_Name,
+  lkup.color_abbr                                                                                             AS Color_Name,
+  lkup.size_abbr                                                                                              AS Size_name,
+  rms.style_desc,
+  color.color_desc,
+  rms.group_number                                                                                            AS Group_id,
+  rms.group_name                                                                                              AS Group_name,
+  rms.division                                                                                                AS Division_id,
+  rms.division_name                                                                                           AS Division_name,
+  rms.new_dept_id                                                                                             AS Category_id,
+  rms.dept_name                                                                                               AS Category_name,
+  rms.class                                                                                                   AS New_Dept_id,
+  rms.class_name                                                                                              AS New_Dept_name,
+  rms.subclass                                                                                                AS New_Class_id,
+  rms.subclass_name                                                                                           AS New_Class_name,
+  rms.series                                                                                                  AS Series,
+
+  --union measures
+  a.net_sales * isnull(ex.exchange_rate, 1) as net_sales,
+  a.net_units                                                                                                 as net_units,
+  --join measures
+
+
+  a.net_units * (e.cost * isnull(ex.exchange_rate, 1))                                                        as net_cost,
+  a.net_units * (e.ticket * isnull(ex.exchange_rate, 1))                                                      as ticket_price,
+  ex.exchange_rate
+
+
+from (
+       select f.fiscal_year,
+              f.fiscal_month,
+              f.fiscal_week,
+              f.fiscal_day,
+              s.dept_id,
+              s.style_id,
+              s.color_id,
+              s.size_id,
+              case when s.location in (10809, 108011, 10892) then 12 else 11 end                 as business_id,
+              case
+                when s.units < 0 and s.location in (10809, 108011, 10892) then 590
+                when s.units >= 0 and s.location in (10809, 108011, 10982) then 591
+                when s.units < 0 and s.location not in (10809, 108011, 10982) then 797
+                when s.units >= 0 and s.location not in (10809, 108011, 10982) then 799
+                end
+                                                                                                 as location_id,
+              cast(s.tran_date as date)                                                          as tran_date,
+              sum(s.total_retail)                                                                as net_sales,
+              sum(s.units)                                                                       as net_units,
+              case when s.location in (10116, 10709, 10093, 10348, 10809) then 'C' else 'RP' end as RPC_Flag
+
+
+       from eb.rms_salestrans s
+              --we need rms_salestrans for the daily direct for RPC flag
+
+              left join eb.fiscal_date f
+            on cast(f.actual_date as date) = cast(s.tran_date as date)
+
+       where cast(s.tran_date as date) >= '2017-02-16'
+         and s.location >= 10000
+         and s.location < 20000
+         --the location filter selects only direct locations
+
+       group by f.fiscal_year,
+                f.fiscal_month,
+                f.fiscal_week,
+                f.fiscal_day,
+                s.dept_id,
+                s.style_id,
+                s.color_id,
+                s.size_id,
+                case when s.location in (10809, 108011, 10892) then 12 else 11 end,
+                case
+                  when s.units < 0 and s.location in (10809, 108011, 10892) then 590
+                  when s.units >= 0 and s.location in (10809, 108011, 10982) then 591
+                  when s.units < 0 and s.location not in (10809, 108011, 10982) then 797
+                  when s.units >= 0 and s.location not in (10809, 108011, 10982) then 799
+                  end,
+                cast(s.tran_date as date),
+                case when s.location in (10116, 10709, 10093, 10348, 10809) then 'C' else 'RP' end
+
+       union
+
+       select f.fiscal_year,
+              f.fiscal_month,
+              f.fiscal_week,
+              f.fiscal_day,
+              r.dept_id,
+              r.style_id,
+              r.color_id,
+              r.size_id,
+              r.business_id,
+              r.location_id,
+              cast(r.tran_date as date) as tran_date,
+              sum(r.retail_cash_amt)    as net_sales,
+              sum(r.tran_units)         as net_units,
+              case
+                when r.price_type_flag = 'C' then 'C'
+                when r.price_type_flag = 'R' then 'RP'
+                else 'RP'
+                end                     as RPC_Flag
+
+       from eb.retail_item_sales r
+              --retail_item_sales has the transactional level RPC flag for stores
+
+              left join eb.fiscal_date f
+            on cast(f.actual_date as date) = cast(r.tran_date as date)
+
+       where cast(r.tran_date as date) >= '2017-02-16'
+
+       group by f.fiscal_year,
+                f.fiscal_month,
+                f.fiscal_week,
+                f.fiscal_day,
+                r.location_id,
+                r.dept_id,
+                r.style_id,
+                r.color_id,
+                r.size_id,
+                r.business_id,
+                r.location_id,
+                cast(r.tran_date as date),
+                case
+                  when r.price_type_flag = 'C' then 'C'
+                  when r.price_type_flag = 'R' then 'RP'
+                  else 'RP'
+                  end
+     ) a
+
+       --there is no cost feild in retailitemsales but there is in rms_salestrans
+       --there is no ticket in rms_Salestrans but there is in retailitemsales
+       left join
+     eb.daily_inv_cost_ticket e
+     ON a.fiscal_year = e.fiscal_year
+       AND a.fiscal_month = e.fiscal_month
+       AND a.fiscal_week = e.fiscal_week
+       and a.fiscal_day = e.fiscal_day
+       and a.business_id = e.business_id
+       AND a.dept_id = e.dept_id
+       AND a.style_id = e.style_id
+       AND a.color_id = e.color_id
+       AND a.size_id = e.size_id
+
+       LEFT JOIN eb.exchange_rate_hist ex
+                 ON a.fiscal_year = ex.fiscal_year
+                   AND a.fiscal_month = ex.fiscal_month
+                   AND a.fiscal_week = ex.fiscal_week
+                   AND ex.nation_id = 'CA'
+                   AND a.business_id IN (2, 4, 12)
+
+       LEFT JOIN eb.msp m
+                 ON a.location_id = m."l#"
+
+       LEFT JOIN eb.location_mstr store
+                 ON a.location_id = store.location_id
+
+       LEFT JOIN eb.sku_lkup lkup
+                 ON a.dept_id = lkup.dept_id
+                   AND a.style_id = lkup.style_id
+                   AND a.color_id = lkup.color_id
+                   AND a.size_id = lkup.size_id
+
+       LEFT JOIN eb.rms_styles rms
+                 ON a.dept_id = rms.dept_id
+                   AND a.style_id = rms.style_id_alpha
+
+       left join eb.comp_fiscal_date_weekly w
+                 ON a.fiscal_year = w.fiscal_year
+                   AND a.fiscal_month = w.fiscal_month
+                   AND a.fiscal_week = w.fiscal_week
+
+
+       left join eb.color_lkup color
+                 ON a.color_id = color.color_id
+
+       left join eb.size_lkup size
+                 ON a.size_id = size.size_id
