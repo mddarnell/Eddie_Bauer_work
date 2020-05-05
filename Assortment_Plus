@@ -1,0 +1,127 @@
+select
+
+a.fiscal_year
+,a.fiscal_month
+,a.fiscal_week_month as fiscal_week
+,a.bow_date
+
+,Cast(Cast(a.fiscal_year AS VARCHAR(4)) +
+	RIGHT('000'+Cast(a.fiscal_month AS VARCHAR(2)), 2) +
+	Cast(a.fiscal_week_month AS VARCHAR(1)) AS INT) as fiscalymw
+
+,a.channel
+,case when a.climate in ('all','All') then 'ALL'
+	else a.climate
+	end as climate
+,a.floorset
+,a.season as assortment_season
+
+,case when a.store_group in ('Base Active','Base Traditional') then 'Base'
+	when a.store_group in ('Camp Active','Camp Traditional') then 'Camp'
+	else a.store_group
+	end as store_group
+,case when a.store_group = 'Direct' then 'D-Core'
+    when a.store_group = 'Direct Only' then 'D-Add'
+    when a.store_group in ('Base Active','Base Traditional') then 'Base'
+    when a.store_group in ('Camp Active','Camp Traditional') then 'Camp'
+    else a.store_group end as store_group_standard
+
+
+
+,a.us_dol as us_price
+,a.can_dol as can_price
+
+,a.dept_id
+,a.style_id
+,a.color_id
+,a.size_id
+,a.size_type
+,a.dept_style_color as "Old Dept-Style-Color"
+
+,a.dev
+,a.drn
+
+,a.store_intro
+,a.direct_intro
+,a.cons
+,a.clear
+
+,r.class  as new_dept_id
+,r.class_name as new_dept_name
+,r.dept_name as category_name
+,r.division as division_id
+,r.division_name
+,r.group_name as group_id
+,r.group_number
+,r.new_dept_id as category_id
+,r.series
+,r.style_desc as style_desc
+,r.subclass as new_class_id
+,r.subclass_name as new_class_name
+
+,cast(r.class as varchar(3)) + '-' + cast(a.style_id as varchar(4)) + '-' + cast(a.color_id as varchar(3)) as "New Dept-Style-Color"
+
+
+,s.dept_name as old_dept_name
+,s.style_name as style_name
+,s.color_abbr as color_name
+
+--,s.size_abbr as size_name
+,sz.size_abbr as size_name
+
+,case when po_flag is null then 'no' else 'yes' end as assorted_flag
+
+,fm.weeks_live
+,fm.weeks_left
+,fm.final_floorset
+,fm.final_floorset_season
+,fm.final_floorset_year
+,fm.first_floorset
+,fm.first_floorset_season
+,fm.first_floorset_year
+,fm.currently_active_flag
+
+,ei.evergreen_flag
+
+from
+eb.assortment a
+
+left join
+eb.rms_styles r
+on a.dept_id = r.dept_id
+and a.style_id = r.style_id_alpha
+
+left join
+--eb.sku_lkup s
+(select
+       dept_id
+       ,style_id
+       ,color_id
+       ,max(dept_name) as dept_name
+       ,max(style_name) as style_name
+       ,max(color_abbr) as color_abbr
+from eb.sku_lkup
+group by
+         dept_id
+         ,style_id
+         ,color_id  ) s
+on a.dept_id = s.dept_id
+and a.style_id = s.style_id
+and a.color_id = s.color_id
+--and a.size_id = s.size_id
+
+left join eb.size_lkup sz
+on a.size_id = sz.size_id
+
+left join
+eb.eb_cc_floorset_metrics fm
+on a.dept_style_color = fm.dept_style_color
+and a.channel = fm.channel
+
+left join
+eb.evergreen_id ei
+on a.dept_id = ei.old_dept_id
+and a.style_id = ei.style_id
+and a.color_id = ei.color_id
+and a.size_type = ei.size_type
+and a.channel = ei.channel
