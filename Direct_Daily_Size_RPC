@@ -1,0 +1,50 @@
+SELECT case when a.location in (10809, 108011, 10892) then 12 else 11 end                 as business
+     , case when a.location in (10809, 108011, 10892) then 'CA' else 'US' end             as country
+     , case when a.location in (10116, 10709, 10093, 10348, 10809) then 'C' else 'RP' end as RPC_status
+     , tran_date
+     , units                                                                              as units
+     , total_cost * c.exchange_rate                                                       as cost
+     , total_retail * c.exchange_rate                                                     as net_sales
+     , e.dept_name                                                                        as category_name
+     , new_dept_id                                                                        as category_id
+     , e.class                                                                            as new_dept_id
+     , class_name                                                                         as new_dept_name
+     , group_number                                                                       as group_id
+     , group_name
+     , division                                                                           as division_id
+     , division_name
+     , b.fiscal_year
+     , b.fiscal_month
+     , b.fiscal_week
+     , c.exchange_rate
+     , a.dept_id                                                                          as old_dept_id
+     , a.style_id                                                                         as style_id
+     , a.color_id                                                                         as color_id
+     , a.size_id                                                                          as size_id
+     , d.size_abbr
+     , d.style_name
+     , d.color_abbr
+     , d.dept_name
+
+FROM [AllocPlanning].[dbo].[RMS_SalesTrans] a
+  left join [AllocPlanning].[dbo].[rms_styles] e
+on a.dept_id= e.dept_id
+  AND a.[style_id] = e.style_id_alpha * 1
+  join [wmsqlprd15].[epitemmvs].[dbo].[FISCAL_DATE] b
+  on a.Tran_Date=b.actual_date
+  join [wmsqlprd15].[epitemmvs].[dbo].[exchange_rate_hist] c
+  on case when a.location in (10809, 108011, 10892) then 'CA' else
+                                                         'US'
+end = c.nation_id
+and b.fiscal_year=c.fiscal_year
+and b.fiscal_month=c.fiscal_month
+and b.fiscal_week=c.fiscal_week
+
+left join [wmsqlprd12].[AllocPlanning].[dbo].[SKU_LKUP] d
+on d.dept_id = a.dept_id
+and d.style_id = a.style_id
+and d.color_id = a.color_id
+and d.size_id = a.size_id
+
+where a.location >=10000 and a.location<20000
+and a.tran_date >= (select min(tran_date) from [AllocPlanning].[dbo].[RMS_SalesTrans] where year(tran_date) = year(getdate())-1)
